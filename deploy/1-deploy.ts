@@ -7,22 +7,15 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployer } = await getNamedAccounts();
 
   console.log("====================");
-  console.log(hre.network.name);
+  console.log("Deploy NFTWhitelistSale Contract");
   console.log("====================");
 
-  console.log("====================");
-  console.log("Deploy Counter Contract");
-  console.log("====================");
-
-  await deploy("Counter", {
-    contract: "Counter",
-    args: [],
+  await deploy("NFTWhitelistSale", {
     from: deployer,
     log: true,
     autoMine: true,
-    skipIfAlreadyDeployed: false,
   });
 };
 
-func.tags = ["deploy"];
+func.tags = ["nft"];
 export default func;
