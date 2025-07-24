@@ -27,6 +27,10 @@ contract NFTWhitelistSale is ERC721, Ownable {
         }
     }
 
+    function isWhitelisted(address user) external view returns (bool) {
+        return whitelist[user];
+    }
+
     function mint(uint256 quantity) external payable {
         require(whitelist[msg.sender], "Not whitelisted");
         require(quantity > 0, "Cannot mint 0");

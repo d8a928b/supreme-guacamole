@@ -11,8 +11,6 @@ describe("NFTWhitelistSale", function () {
   let nftContract: NFTWhitelistSale;
 
   const PRICE = ethers.parseEther("0.003");
-  const MAX_SUPPLY = 100;
-  const MAX_PER_WALLET = 5;
 
   beforeEach(async () => {
     [deployer, addr1, addr2, addr3] = await ethers.getSigners();
