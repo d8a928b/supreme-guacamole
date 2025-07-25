@@ -1,12 +1,17 @@
 import json
+import os
 from web3 import Web3
 import getpass
+from dotenv import load_dotenv
 
 
-RPC_URL = "https://sepolia.infura.io/v3/8ff3cfdd147a4b95916b75d2ba88f391"
-NFT_ADDRESS = "0xa52D39343dB014b12C78dB64215643224CF42329"
-SALE_ADDRESS = "0x059b61f23581Ad820707a5272c6c1D60F3185eF2"
 
+load_dotenv()
+RPC_URL = os.getenv("RPC_URL")
+NFT_ADDRESS = os.getenv("NFT_ADDRESS")
+SALE_ADDRESS = os.getenv("SALE_ADDRESS")
+
+print(RPC_URL,NFT_ADDRESS,SALE_ADDRESS)
 
 with open("NFT.json") as f:
     nft_abi = json.load(f)["abi"]

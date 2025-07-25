@@ -25,6 +25,7 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
 const {
   TESTNET_PRIVATE_KEY: testnetPrivateKey,
   MAINNET_PRIVATE_KEY: mainnetPrivateKey,
+  YOUR_ETHERSCAN_API_KEY: yourEtherscanApiKey
 } = process.env;
 const reportGas = process.env.REPORT_GAS;
 
@@ -80,9 +81,7 @@ module.exports = {
     runOnCompile: true,
   },
   etherscan: {
-    apiKey: {
-      "mainnet": "",
-    }
+    apiKey: yourEtherscanApiKey
   },
   sourcify: {
     // Disabled by default
