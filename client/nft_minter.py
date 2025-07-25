@@ -1,146 +1,157 @@
+from decimal import Decimal
 import json
-import time
-import hashlib
-from eth_account import Account
 from web3 import Web3
-from eth_utils import keccak, to_bytes, to_hex
+from eth_account import Account
+import getpass
 
-# Connect to network
-w3 = Web3(Web3.HTTPProvider("https://sepolia.infura.io/v3/8ff3cfdd147a4b95916b75d2ba88f391"))  # Change to your RPC
+# === Config ===
+RPC_URL = "https://sepolia.infura.io/v3/8ff3cfdd147a4b95916b75d2ba88f391"
+NFT_ADDRESS = "0xa52D39343dB014b12C78dB64215643224CF42329"
+SALE_ADDRESS = "0x059b61f23581Ad820707a5272c6c1D60F3185eF2"
 
-# === Replace with your deployed addresses and ABIs ===
-NFT_COLLECTION_ADDRESS = "0xee4A9F0f8271aB7fe7c245d2aA566E1b3A12CF51"
-WHITELIST_SALE_ADDRESS = "0xcb0807A1262d60a94D6D0a956fe085acB4fEf6fF"
-OWNER_PRIVATE_KEY = "5dd83e56f4c038272fcb82a205bf5374fc092e30e9c9bc871e76bc7d76e5c2e8"
-
-with open("NFTCollection.json") as f:
+# Load ABIs
+with open("NFT.json") as f:
     nft_abi = json.load(f)["abi"]
-
 with open("WhitelistSale.json") as f:
     sale_abi = json.load(f)["abi"]
 
-nft = w3.eth.contract(address=NFT_COLLECTION_ADDRESS, abi=nft_abi)
-sale = w3.eth.contract(address=WHITELIST_SALE_ADDRESS, abi=sale_abi)
+# Initialize Web3
+w3 = Web3(Web3.HTTPProvider(RPC_URL))
 
-# === Helper: keccak leaf ===
-def hash_leaf(addr):
-    return keccak(to_bytes(hexstr=w3.to_checksum_address(addr).lower()))
+# === Ask for Private Key ===
+PRIVATE_KEY = getpass.getpass("🔑 Enter your private key: ").strip()
+account = w3.eth.account.from_key(PRIVATE_KEY)
+ACCOUNT = account.address
 
-# === Manual Merkle Tree ===
-def build_merkle_tree(leaves):
-    tree = [leaves]
-    while len(tree[-1]) > 1:
-        level = []
-        nodes = tree[-1]
-        for i in range(0, len(nodes), 2):
-            left = nodes[i]
-            right = nodes[i+1] if i+1 < len(nodes) else nodes[i]
-            combined = keccak(left + right)
-            level.append(combined)
-        tree.append(level)
-    return tree
+# Contract instances
+nft = w3.eth.contract(address=NFT_ADDRESS, abi=nft_abi)
+sale = w3.eth.contract(address=SALE_ADDRESS, abi=sale_abi)
 
-def get_proof(leaves, target_index):
-    tree = build_merkle_tree(leaves)
-    proof = []
-    for level in tree[:-1]:
-        is_right_node = target_index % 2
-        sibling_index = target_index - 1 if is_right_node else target_index + 1
-        if sibling_index < len(level):
-            proof.append(level[sibling_index])
-        else:
-            proof.append(level[target_index])
-        target_index //= 2
-    return proof
+OWNER = nft.functions.owner().call()
+IS_OWNER = ACCOUNT.lower() == OWNER.lower()
 
-def set_merkle_root(whitelist):
-    leaves = [hash_leaf(a) for a in whitelist]
-    root = build_merkle_tree(leaves)[-1][0]
-    acct = Account.from_key(OWNER_PRIVATE_KEY)
-    tx = sale.functions.setMerkleRoot(root).build_transaction({
-        "from": acct.address,
-        "nonce": w3.eth.get_transaction_count(acct.address),
+
+def send_tx(tx):
+    tx.update({
+        "nonce": w3.eth.get_transaction_count(ACCOUNT),
+        "maxFeePerGas": w3.to_wei("2", "gwei"),
+        "maxPriorityFeePerGas": w3.to_wei("1.5", "gwei"),
         "gas": 500000,
-        "gasPrice": w3.to_wei("2", "gwei")
+        "chainId": w3.eth.chain_id,
     })
-    signed = acct.sign_transaction(tx)
+    signed = account.sign_transaction(tx)
     tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-    print("Merkle root set:", to_hex(root))
-    print("Tx:", tx_hash.hex())
+    print(f"📤 Sent tx: {tx_hash.hex()}")
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    print("✅ Transaction mined.")
+    return receipt
+
+
+def check_whitelist(addr):
+    if IS_OWNER:
+        print(f"🔍 Checking whitelist for: {addr}")
+        is_whitelisted = sale.functions.isWhitelisted(addr).call()
+        print(f"📌 {addr} is {'✅ whitelisted' if is_whitelisted else '❌ not whitelisted'}")
+    else:
+        is_whitelisted = sale.functions.isWhitelisted(ACCOUNT).call()
+        print(f"👤 You are {'✅ whitelisted' if is_whitelisted else '❌ not whitelisted'}")
+
+
+def check_minted_by_user(addr):
+    minted = sale.functions.mintedPerWallet(addr).call()
+    if IS_OWNER:
+        print(f"🧾 {addr} has minted {minted} NFTs")
+    else:
+        print(f"🧾 You have minted {minted} NFTs")
+    return minted
+
+
+def mint(quantity):
+    max_per_wallet = sale.functions.MAX_PER_WALLET().call()
+    price_per_nft = sale.functions.PRICE_PER_NFT().call()
+
+    already_minted = check_minted_by_user(ACCOUNT)
+
+    if already_minted + quantity > max_per_wallet:
+        print(f"❌ You already minted {already_minted}, max per wallet is {max_per_wallet}")
+        return
+
+    total_cost = price_per_nft * quantity
+    print(f"💰 Total cost: {Web3.from_wei(total_cost, 'ether')} ETH")
+
+    if input("Proceed? (y/n): ").lower() != "y":
+        print("❌ Cancelled.")
+        return
+
+    tx = sale.functions.mint(quantity).build_transaction({"from": ACCOUNT, "value": total_cost})
+    send_tx(tx)
+
+
+def add_to_whitelist(addr):
+    tx = sale.functions.addToWhitelist([addr]).build_transaction({"from": ACCOUNT})
+    send_tx(tx)
+
+
+def remove_from_whitelist(addr):
+    tx = sale.functions.removeFromWhitelist([addr]).build_transaction({"from": ACCOUNT})
+    send_tx(tx)
+
+
+def total_minted():
+    count = nft.functions.totalMinted().call()
+    print(f"🎉 Total NFTs minted: {count}")
+
 
 def withdraw():
-    acct = Account.from_key(OWNER_PRIVATE_KEY)
-    tx = sale.functions.withdraw().build_transaction({
-        "from": acct.address,
-        "nonce": w3.eth.get_transaction_count(acct.address),
-        "gas": 100000,
-        "gasPrice": w3.to_wei("2", "gwei")
-    })
-    signed = acct.sign_transaction(tx)
-    tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-    print("Withdraw initiated. Tx:", tx_hash.hex())
+    tx = sale.functions.withdraw().build_transaction({"from": ACCOUNT})
+    send_tx(tx)
 
-def mint(address, private_key, whitelist):
-    leaves = [hash_leaf(a) for a in whitelist]
-    index = whitelist.index(address)
-    proof = get_proof(leaves, index)
-    hex_proof = [to_hex(p) for p in proof]
 
-    acct = Account.from_key(private_key)
-    is_whitelist_phase = int(time.time()) <= sale.functions.whitelistEndTime().call()
-    value = 0 if is_whitelist_phase else w3.to_wei("0.003", "ether")
+def menu():
+    print(f"\n🔐 Logged in as: {ACCOUNT}")
+    print(f"🧑‍💼 Role: {'OWNER' if IS_OWNER else 'USER'}")
 
-    tx = sale.functions.mint(1, hex_proof).build_transaction({
-        "from": acct.address,
-        "nonce": w3.eth.get_transaction_count(acct.address),
-        "value": value,
-        "gas": 500000,
-        "gasPrice": w3.to_wei("2", "gwei")
-    })
-    signed = acct.sign_transaction(tx)
-    tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-    print("Minted! Tx:", tx_hash.hex())
-
-def balance(address):
-    bal = nft.functions.balanceOf(address).call()
-    print(f"{address} owns {bal} NFTs.")
-
-# === Main console ===
-def main():
     while True:
-        print("\nSelect mode:")
-        print("1. Owner - Set whitelist + Merkle root")
-        print("2. Owner - Withdraw")
-        print("3. User - Mint")
-        print("4. User - Check NFT balance")
-        print("0. Exit")
+        print("\n=== NFT Whitelist Console ===")
+        print("1. Check Whitelist")
+        if not IS_OWNER:
+            print("2. Mint NFT")
+        if IS_OWNER:
+            print("3. Add to Whitelist (owner only)")
+            print("4. Remove from Whitelist (owner only)")
+            print("5. Total Minted")
+            print("6. Withdraw ETH (owner only)")
+        else:
+            print("5. My Minted NFTs")
+        print("7. Exit")
 
-        choice = input("Choice: ").strip()
+        choice = input("Choose an option: ").strip()
 
         if choice == "1":
-            wl = input("Comma-separated whitelist addresses: ").split(",")
-            whitelist = [w3.to_checksum_address(a.strip()) for a in wl]
-            set_merkle_root(whitelist)
-
-        elif choice == "2":
+            addr = ACCOUNT if not IS_OWNER else input("Enter address to check: ").strip()
+            check_whitelist(addr)
+        elif choice == "2" and not IS_OWNER:
+            qty = int(input("How many NFTs to mint? "))
+            mint(qty)
+        elif choice == "3" and IS_OWNER:
+            addr = input("Address to add to whitelist: ").strip()
+            add_to_whitelist(addr)
+        elif choice == "4" and IS_OWNER:
+            addr = input("Address to remove from whitelist: ").strip()
+            remove_from_whitelist(addr)
+        elif choice == "5":
+            if IS_OWNER:
+                total_minted()
+            else:
+                check_minted_by_user(ACCOUNT)
+        elif choice == "6" and IS_OWNER:
             withdraw()
-
-        elif choice == "3":
-            addr = input("Your address: ").strip()
-            pkey = input("Your private key: ").strip()
-            wl = input("Enter full whitelist used for Merkle tree: ").split(",")
-            whitelist = [w3.to_checksum_address(a.strip()) for a in wl]
-            mint(w3.to_checksum_address(addr), pkey, whitelist)
-
-        elif choice == "4":
-            addr = input("Address to check: ").strip()
-            balance(w3.to_checksum_address(addr))
-
-        elif choice == "0":
+        elif choice == "7":
+            print("👋 Goodbye!")
             break
-
         else:
-            print("Invalid option.")
+            print("❌ Invalid option or unauthorized access.")
+
 
 if __name__ == "__main__":
-    main()
+    menu()
