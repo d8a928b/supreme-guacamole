@@ -118,44 +118,46 @@ def menu():
 
     while True:
         print("\n=== NFT Whitelist Console ===")
-        print("1. Check Whitelist")
-        if not IS_OWNER:
-            print("2. Mint NFT")
-        if IS_OWNER:
-            print("3. Add to Whitelist (owner only)")
-            print("4. Remove from Whitelist (owner only)")
-            print("5. Total Minted")
-            print("6. Withdraw ETH (owner only)")
-        else:
-            print("5. My Minted NFTs")
-        print("7. Exit")
+        options = []
 
+        # (label, function_to_call, optional_input_prompt)
+        options.append(("Check Whitelist", lambda: check_whitelist(
+            input("Enter address to check: ").strip() if IS_OWNER else ACCOUNT)))
+
+        if not IS_OWNER:
+            options.append(("Mint NFT", lambda: mint(
+                int(input("How many NFTs to mint? ")))))
+
+        if IS_OWNER:
+            options.append(("Add to Whitelist (owner only)", lambda: add_to_whitelist(
+                input("Address to add: ").strip())))
+            options.append(("Remove from Whitelist (owner only)", lambda: remove_from_whitelist(
+                input("Address to remove: ").strip())))
+            options.append(("Total Minted", total_minted))
+            options.append(("Withdraw ETH (owner only)", withdraw))
+        else:
+            options.append(("My Minted NFTs", lambda: check_minted_by_user(ACCOUNT)))
+
+        options.append(("Exit", lambda: exit()))
+
+        # Print numbered menu
+        for idx, (label, _) in enumerate(options, start=1):
+            print(f"{idx}. {label}")
+
+        # Get user input
         choice = input("Choose an option: ").strip()
 
-        if choice == "1":
-            addr = ACCOUNT if not IS_OWNER else input("Enter address to check: ").strip()
-            check_whitelist(addr)
-        elif choice == "2" and not IS_OWNER:
-            qty = int(input("How many NFTs to mint? "))
-            mint(qty)
-        elif choice == "3" and IS_OWNER:
-            addr = input("Address to add to whitelist: ").strip()
-            add_to_whitelist(addr)
-        elif choice == "4" and IS_OWNER:
-            addr = input("Address to remove from whitelist: ").strip()
-            remove_from_whitelist(addr)
-        elif choice == "5":
-            if IS_OWNER:
-                total_minted()
+        if choice.isdigit():
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(options):
+                try:
+                    options[choice_idx][1]()  # Call the associated function
+                except Exception as e:
+                    print(f"❌ Error: {e}")
             else:
-                check_minted_by_user(ACCOUNT)
-        elif choice == "6" and IS_OWNER:
-            withdraw()
-        elif choice == "7":
-            print("👋 Goodbye!")
-            break
+                print("❌ Invalid option.")
         else:
-            print("❌ Invalid option or unauthorized access.")
+            print("❌ Invalid input.")
 
 
 if __name__ == "__main__":
