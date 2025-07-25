@@ -151,9 +151,16 @@ def menu():
             choice_idx = int(choice) - 1
             if 0 <= choice_idx < len(options):
                 try:
-                    options[choice_idx][1]()  # Call the associated function
+                    options[choice_idx][1]()  # Call the selected function
                 except Exception as e:
-                    print(f"❌ Error: {e}")
+                    # Convert exception to string for inspection
+                    err_str = str(e)
+
+                    # Detect common insufficient funds error
+                    if "insufficient funds" in err_str.lower():
+                        print("❌ Insufficient funds!")
+                    else:
+                        print(f"❌ Error: {err_str}")
             else:
                 print("❌ Invalid option.")
         else:
