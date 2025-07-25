@@ -67,6 +67,11 @@ def check_minted_by_user(addr):
 
 
 def mint(quantity):
+    # Check whitelist before anything
+    if not sale.functions.isWhitelisted(ACCOUNT).call():
+        print("❌ You are not whitelisted. Cannot mint.")
+        return
+
     max_per_wallet = sale.functions.MAX_PER_WALLET().call()
     price_per_nft = sale.functions.PRICE_PER_NFT().call()
 
